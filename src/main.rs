@@ -1,117 +1,126 @@
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
+use bevy::input::ButtonInput;
+use bevy::input::keyboard::KeyCode;
 
-fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
-        .add_systems(Startup, (setup, spawn_ground))
-        .add_systems(Update, player_movement)
-        .run();
-}
+const PLAYER_SPEED: f32 = 1800.0;
+const JUMP_IMPULSE: f32 = 800.0;
 
 #[derive(Component)]
 struct Player;
 
 #[derive(Component)]
-struct Velocity {
-    y: f32,
+struct PlayerDirection {
+    direction_x: f32,
 }
 
-#[derive(Component)]
-struct Collider {
-    size: Vec2,
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0))
+        .add_plugins(RapierDebugRenderPlugin::default())
+        .add_systems(Startup, setup)
+        .add_systems(Update, player_movement)
+        .run();
 }
 
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+) {
+    commands.spawn(Camera2d::default());
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-enum Collision {
-    Top,
-    Bottom,
-    Left,
-    Right,
-}
-const PLAYER_SPEED: f32 = 200.0;
-const GRAVITY: f32 = -500.0;
-const JUMP_STRENGTH: f32 = 300.0;
-const PLAYER_HEIGHT: f32 = 32.0;
-const MAX_FALL_SPEED: f32 = -400.0;
-
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // Камера
-    commands.spawn(Camera2dBundle::default());
-
-    // Спрайт игрока
     let player_texture = asset_server.load("player.png");
 
     commands.spawn((
-        SpriteBundle {
-            texture: player_texture,
-            transform: Transform::from_xyz(0.0, 0.0, 0.0),
+        Sprite {
+            image: player_texture,
             ..default()
         },
+        RigidBody::Dynamic,
+        Collider::cuboid(8.0, 16.0),
+        ColliderMassProperties::Mass(1.0),
+        GravityScale(3.0),
+        LockedAxes::ROTATION_LOCKED,
+        Friction::new(0.0),
+        Damping { linear_damping: 5.0, angular_damping: 0.0 },
+        ExternalForce::default(),
+        ExternalImpulse::default(),
         Player,
-        Velocity { y: 0.0 },
-        Collider{ size: Vec2::new(16.0, 32.0)},
+        PlayerDirection { direction_x: 0.0 },
     ));
-}
-
-fn spawn_ground(mut commands: Commands) {
-    let ground_width = 1000.0;
-    let ground_height = 20.0;
+    commands.spawn((
+        Sprite {
+            image: Default::default(),
+            texture_atlas: None,
+            color: Color::srgb(0.3, 0.3, 0.3),
+            custom_size: Some(Vec2::new(1000.0, 20.0)),
+            rect: None,
+            anchor: Default::default(),
+            flip_x: false,
+            flip_y: false,
+            image_mode: Default::default(),
+        },
+        Transform::from_xyz(0.0, -350.0, 0.0),
+        GlobalTransform::default(),
+        Visibility::default(),
+        ViewVisibility::default(),
+        InheritedVisibility::default(),
+        RigidBody::Fixed,
+        Collider::cuboid(500.0, 10.0),
+    ));
 
     commands.spawn((
-        SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0.3, 0.3, 0.3),
-                custom_size: Some(Vec2::new(ground_width, ground_height)),
-                ..default()
-            },
-            transform: Transform::from_xyz(0.0, -250.0, 0.0),
-            ..default()
+        Sprite {
+            image: Default::default(),
+            texture_atlas: None,
+            color: Color::srgb(0.3, 0.3, 0.3),
+            custom_size: Some(Vec2::new(200.0, 20.0)),
+            rect: None,
+            anchor: Default::default(),
+            flip_x: false,
+            flip_y: false,
+            image_mode: Default::default(),
         },
-        Collider { size: Vec2::new(ground_width, ground_height) },
-
+        Transform::from_xyz(0.0, -150.0, 0.0),
+        GlobalTransform::default(),
+        Visibility::default(),
+        ViewVisibility::default(),
+        InheritedVisibility::default(),
+        RigidBody::Fixed,
+        Collider::cuboid(100.0, 10.0),
     ));
 }
 
 fn player_movement(
-    mut query: Query<(&mut Transform, &mut Velocity), With<Player>>,
+    mut query: Query<(&mut ExternalImpulse, &Transform), With<Player>>,
     input: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
 ) {
-    const GROUND_LEVEL: f32 = -250.0 + 10.0;
-
-    if let Ok((mut transform, mut velocity)) = query.get_single_mut() {
-        let dt = time.delta_seconds();
+    if let Ok((mut impulse, transform)) = query.single_mut() {
+        let dt = time.delta_secs();
 
         let mut direction_x = 0.0;
+
         if input.pressed(KeyCode::KeyA) {
-            direction_x -= 1.0;
-        }
-        if input.pressed(KeyCode::KeyD) {
-            direction_x += 1.0;
-        }
-
-        transform.translation.x += direction_x * PLAYER_SPEED * dt;
-
-        if input.just_pressed(KeyCode::Space) && is_on_ground(transform.translation.y, PLAYER_HEIGHT) {
-            velocity.y = JUMP_STRENGTH;
+            direction_x = -1.0;
+        } else if input.pressed(KeyCode::KeyD) {
+            direction_x = 1.0;
         }
 
-        velocity.y += GRAVITY * dt;
-        velocity.y = velocity.y.clamp(MAX_FALL_SPEED, f32::INFINITY); // ограничение скорости падения
+        // Применяем горизонтальный импульс
+        impulse.impulse.x = direction_x * PLAYER_SPEED * dt;
 
-        transform.translation.y += velocity.y * dt;
-
-        if transform.translation.y - PLAYER_HEIGHT / 2.0 <= GROUND_LEVEL {
-            transform.translation.y = GROUND_LEVEL + PLAYER_HEIGHT / 2.0;
-            velocity.y = 0.0;
+        // Прыжок при нажатии пробела
+        if input.just_pressed(KeyCode::Space) {
+            impulse.impulse.y = JUMP_IMPULSE;
+        } else {
+            impulse.impulse.y = 0.0; // Не держим прыжок постоянно
         }
+
+        println!("Player position: {:?}", transform.translation);
+        println!("Impulse applied: {:?}", impulse.impulse);
+    } else {
+        println!("Player not found!");
     }
-}
-
-fn is_on_ground(y_position: f32, player_height: f32) -> bool {
-    let ground_level = -250.0 + 10.0;
-    let player_bottom = y_position - player_height / 2.0;
-    (player_bottom - ground_level).abs() < 0.1
 }
