@@ -82,7 +82,6 @@ fn player_movement(
 
         impulse.impulse.x = direction_x * player_settings.speed * dt;
 
-
         if input.just_pressed(KeyCode::Space) {
             impulse.impulse.y = player_settings.jump_impulse;
         } else {
