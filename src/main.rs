@@ -1,7 +1,8 @@
 mod platform_plugin;
 mod player_plugin;
-use platform_plugin::PlatformPlugin;
+mod level_bounds_plugin;
 
+use platform_plugin::PlatformPlugin;
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
 use crate::player_plugin::PlayerPlugin;
