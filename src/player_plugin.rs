@@ -78,7 +78,7 @@ fn spawn_player(
         RigidBody::Dynamic,
         Collider::cuboid(16.0, 16.0),
         ColliderMassProperties::Mass(1.0),
-        GravityScale(3.0),
+        GravityScale(2.0),
         LockedAxes::ROTATION_LOCKED,
         Friction::new(0.0),
         Damping {
